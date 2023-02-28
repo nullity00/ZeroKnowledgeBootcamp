@@ -133,6 +133,7 @@ func faucet{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(amo
 func burn{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(amount: Uint256) -> (
     success: felt
 ) {
+    alloc_locals;
     let (caller) = get_caller_address();
     let (q, r) = uint256_unsigned_div_rem(amount, Uint256(low = 10, high = 0));
     let (admin_address) = get_admin();
