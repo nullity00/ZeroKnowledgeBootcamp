@@ -6,7 +6,7 @@ import { number } from "starknet"
 
 import contractAbi from "./contract_abi.json"
 
-const contractAddress = "0x0704ed6b41f5d9dfdc5037c627d53ee52aef0675ed47ba59b57b8152c0144a9e"
+const contractAddress = "0x0065333ac6cc0b02c09b98331059e9883b724c1408f5b6bf85fc2ab301dc68e6"
 
 
 function App() {
