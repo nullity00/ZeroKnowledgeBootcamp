@@ -12,7 +12,7 @@ As in other exercises functions declarations are provided, their names and param
 
 ## Mint index
 
-Change minting procedure so that rathar than passing an ID, instead it fetches one from a storage variable named `counter()`. After minting current index of `counter()` is changed to be + 1.
+Change minting procedure so that rather than passing an ID, instead it fetches one from a storage variable named `counter()`. After minting current index of `counter()` is changed to be + 1.
 
 ## Original owner
 

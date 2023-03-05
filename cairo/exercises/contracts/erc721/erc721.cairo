@@ -9,6 +9,18 @@ from openzeppelin.introspection.ERC165 import ERC165
 from openzeppelin.token.erc721.library import ERC721
 
 //
+// Storage
+//
+
+@storage_var
+func counter() -> (current_counter: Uint256){
+}
+
+@storage_var
+func og_owner(tokenId: Uint256) -> (owner: felt){
+}
+
+//
 // Constructor
 //
 
@@ -91,9 +103,31 @@ func owner{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}() ->
     return (owner,);
 }
 
+@view 
+func getCounter{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}() -> (counter: Uint256) {
+    let (current_counter: Uint256) = counter.read();
+    return (current_counter,);
+}
+
+@view
+func getOriginalOwner{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
+    tokenId: Uint256
+) -> (owner: felt) {
+    let (owner: felt) = og_owner.read(tokenId);
+    return (owner,);
+}
+
 //
 // Externals
 //
+
+func updateCounter{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
+) {
+    let (current_counter: Uint256) = counter.read();
+    let ( res : Uint256, carry : felt ) = uint256_add(current_counter, Uint256(low = 1, high = 0)); 
+    counter.write(res);
+    return ();
+}
 
 @external
 func approve{pedersen_ptr: HashBuiltin*, syscall_ptr: felt*, range_check_ptr}(
@@ -128,10 +162,12 @@ func safeTransferFrom{pedersen_ptr: HashBuiltin*, syscall_ptr: felt*, range_chec
 }
 
 @external
-func mint{pedersen_ptr: HashBuiltin*, syscall_ptr: felt*, range_check_ptr}(to: felt, new_token_id: Uint256) {
+func mint{pedersen_ptr: HashBuiltin*, syscall_ptr: felt*, range_check_ptr}(to: felt) {
     Ownable.assert_only_owner();
-
-    ERC721._mint(to, new_token_id);
+    let (current_counter: Uint256) = counter.read();
+    ERC721._mint(to, current_counter);
+    updateCounter();
+    og_owner.write(current_counter, to);
     return ();
 }
 
