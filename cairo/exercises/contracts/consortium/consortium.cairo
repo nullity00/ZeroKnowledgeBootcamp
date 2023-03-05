@@ -1,7 +1,7 @@
 %lang starknet
 from starkware.cairo.common.cairo_builtins import HashBuiltin, BitwiseBuiltin
 from starkware.starknet.common.syscalls import get_caller_address, get_block_timestamp
-from starkware.cairo.common.math import unsigned_div_rem, assert_le_felt, assert_le, assert_nn
+from starkware.cairo.common.math import unsigned_div_rem, assert_le_felt, assert_le, assert_nn, assert_not_zero, assert_not_equal
 from starkware.cairo.common.math_cmp import is_le
 from starkware.cairo.common.alloc import alloc
 from starkware.cairo.common.pow import pow
@@ -58,7 +58,7 @@ func members(consortium_idx: felt, member_addr: felt) -> (memb: Member) {
 }
 
 @storage_var
-func proposals(consortium_idx: felt, proposal_idx: felt) -> (win_idx: Proposal) {
+func proposals(consortium_idx: felt, proposal_idx: felt) -> (proposal: Proposal) {
 }
 
 @storage_var
@@ -96,7 +96,11 @@ func answered(consortium_idx: felt, proposal_idx: felt, member_addr: felt) -> (t
 
 @external
 func create_consortium{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}() {
-    
+    let (idx: felt) = consortium_idx.read();
+    let (chairperson: felt) = get_caller_address();
+    consortium_idx.write(idx+1);
+    consortiums.write(idx+1, Consortium(chairperson, 0));
+    members.write(idx+1, chairperson, Member(100, TRUE, TRUE));
     return ();
 }
 
@@ -112,7 +116,14 @@ func add_proposal{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_pt
     type: felt,
     deadline: felt,
 ) {
-
+    let (callee: felt) = get_caller_address();
+    let (member: Member) = members.read(consortium_idx, callee);
+    assert_not_equal(member.prop, FALSE);
+    let (idx: felt) = proposals_idx.read(consortium_idx);
+    proposals_idx.write(consortium_idx, idx + 1);
+    proposals.write(consortium_idx, idx + 1, Proposal(type, 0, 0, deadline, FALSE));
+    proposals_title.write(consortium_idx, idx + 1, title_len, title);
+    proposals_link.write(consortium_idx, idx + 1, link_len, link);
     return ();
 }
 
@@ -120,15 +131,25 @@ func add_proposal{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_pt
 func add_member{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
     consortium_idx: felt, member_addr: felt, prop: felt, ans: felt, votes: felt
 ) {
-
+    let (callee: felt) = get_caller_address();
+    let (consortium: Consortium) = consortiums.read(consortium_idx);
+    if (callee != consortium.chairperson) {
+        return ();
+    }
+    members.write(consortium_idx, member_addr, Member(votes, prop, ans));
     return ();
 }
 
 @external
 func add_answer{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
-    consortium_idx: felt, proposal_idx: felt, string_len: felt, string: felt*
+    consortium_idx: felt, proposal_idx: felt, string_len: felt, string: felt
 ) {
-
+    let (callee: felt) = get_caller_address();
+    let (member: Member) = members.read(consortium_idx, callee);
+    assert_not_equal(member.ans, FALSE);
+    let (proposal: Proposal) = proposals.read(consortium_idx, proposal_idx);
+    proposals_answers.write(consortium_idx, proposal_idx, proposal.ans_idx + 1, Answer(string, 0));
+    proposals.write(consortium_idx, proposal_idx, Proposal(proposal.type, proposal.win_idx, proposal.ans_idx + 1, proposal.deadline, proposal.over));
     return ();
 }
 
@@ -136,7 +157,15 @@ func add_answer{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}
 func vote_answer{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
     consortium_idx: felt, proposal_idx: felt, answer_idx: felt
 ) {
-
+    let (callee: felt) = get_caller_address();
+    let (member : Member) = members.read(consortium_idx, callee);
+    assert_not_zero(member.votes);
+    let (true) = voted.read(consortium_idx, proposal_idx, callee);
+    assert_not_equal(true, 1);
+    voted.write(consortium_idx, proposal_idx, callee, 1);
+    let (answer : felt) = proposals_answers.read(consortium_idx, proposal_idx, answer_idx);
+    proposals_answers.write(consortium_idx, proposal_idx, answer_idx, Answer(answer.text, answer.votes + 1));
+    members.write(consortium_idx, callee, Member(member.votes - 1, member.prop, member.ans));
     return ();
 }
 
@@ -144,8 +173,16 @@ func vote_answer{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr
 func tally{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
     consortium_idx: felt, proposal_idx: felt
 ) -> (win_idx: felt) {
-
-    return (winner_idx,);
+    let (callee: felt) = get_caller_address();
+    let (timestamp: felt) = get_block_timestamp();
+    let (consortium: Consortium) = consortiums.read(consortium_idx);
+    if (callee != consortium.chairperson) {
+        assert_le(consortium.deadline, timestamp);
+        let (proposal: Proposal) = proposals.read(consortium_idx, proposal_idx);
+        let highest_votes: felt = 0;
+        let (idx : felt) = find_highest(consortium_idx, proposal_idx, highest_votes, proposal.ans_idx, proposal.ans_idx);
+        return (win_idx = idx,);
+    }
 }
 
 
@@ -156,8 +193,14 @@ func tally{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
 func find_highest{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
     consortium_idx: felt, proposal_idx: felt, highest: felt, idx: felt, countdown: felt
 ) -> (idx: felt) {
-
-    return (idx,);    
+    if (countdown == 0) {
+        return (idx = idx,);
+    }
+    let (answer: Answer) = proposals_answers.read(consortium_idx, proposal_idx, countdown);
+    if (answer.votes - highest == 0) {
+        return (idx = find_highest(consortium_idx, proposal_idx, answer.votes, countdown, countdown - 1),);
+    } 
+    return (idx = find_highest(consortium_idx, proposal_idx, highest, idx, countdown - 1),); 
 }
 
 // Loads it based on length, internall calls only
